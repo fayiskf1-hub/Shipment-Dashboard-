@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipment Performance</title>
+<!-- Pinned, exact version. Never use an unversioned or @latest URL. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ============================================================
+   DESIGN TOKENS — change the look here, nowhere else.
+   Light is the default; dark applies via OS preference unless the
+   viewer forced light, or when the viewer forced dark.
+   ============================================================ */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --text: #16191f;
+  --text-2: #5b6372;
+  --text-3: #8a93a3;
+  --accent: #2f6fde;
+  --accent-soft: #e8f0fd;
+  --good: #1a8a5a;  --good-soft: #e3f4ec;
+  --warn: #b26a00;  --warn-soft: #fdf1dc;
+  --bad: #c8372d;   --bad-soft: #fbe7e5;
+  --info: #2f6fde;  --info-soft: #e8f0fd;
+  /* Categorical series — ordered for max adjacent contrast, CVD-checked */
+  --s1: #2f6fde; --s2: #e07b1f; --s3: #14a38b; --s4: #8a5cd6; --s5: #d6457a; --s6: #6b7a8f;
+  --grid: #eceef2;
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --radius: 12px;
+  --gap: 16px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b21; --surface-2: #1e232b; --border: #2a303a;
+    --text: #e8ebf0; --text-2: #a3abb9; --text-3: #6f7889;
+    --accent: #6c9cf0; --accent-soft: #1d2a40;
+    --good: #45c08a; --good-soft: #15302a; --warn: #e3a645; --warn-soft: #34291a;
+    --bad: #f0736a; --bad-soft: #3a1f1e; --info: #6c9cf0; --info-soft: #1d2a40;
+    --s1: #6c9cf0; --s2: #f0a050; --s3: #3cc9ae; --s4: #b08cf0; --s5: #f07aa4; --s6: #8f9bb0;
+    --grid: #232933; --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b21; --surface-2: #1e232b; --border: #2a303a;
+  --text: #e8ebf0; --text-2: #a3abb9; --text-3: #6f7889;
+  --accent: #6c9cf0; --accent-soft: #1d2a40;
+  --good: #45c08a; --good-soft: #15302a; --warn: #e3a645; --warn-soft: #34291a;
+  --bad: #f0736a; --bad-soft: #3a1f1e; --info: #6c9cf0; --info-soft: #1d2a40;
+  --s1: #6c9cf0; --s2: #f0a050; --s3: #3cc9ae; --s4: #b08cf0; --s5: #f07aa4; --s6: #8f9bb0;
+  --grid: #232933; --shadow: none; color-scheme: dark;
+}
+
+/* ============================================================ BASE */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 20px 16px 40px; }
+@media (min-width: 900px) { .wrap { padding: 28px 32px 48px; } }
+h1 { font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 14px; margin: 0; font-weight: 600; }
+.muted { color: var(--text-2); }
+.num { font-variant-numeric: tabular-nums; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ============================================================ HEADER */
+.topbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; }
+.topbar .sub { margin-top: 4px; font-size: 13px; color: var(--text-2); }
+.actions { display: flex; gap: 8px; }
+.btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+.btn:hover { background: var(--surface-2); }
+
+/* ============================================================ FILTERS */
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: var(--gap); box-shadow: var(--shadow); }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.filters select { min-width: 140px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; color: var(--text); }
+.filters .spacer { flex: 1; }
+.filter-count { font-size: 12px; color: var(--text-2); align-self: center; }
+@media (max-width: 600px) { .filters label { flex: 1 1 45%; } .filters select { min-width: 0; width: 100%; } }
+
+/* ============================================================ KPI CARDS */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--gap); margin-bottom: var(--gap); }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 12px; box-shadow: var(--shadow); min-width: 0; }
+.kpi .label { font-size: 12px; color: var(--text-2); font-weight: 500; display: flex; justify-content: space-between; gap: 8px; }
+.kpi .value { font-size: 28px; font-weight: 650; letter-spacing: -.02em; margin: 6px 0 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; min-height: 26px; }
+.delta { font-weight: 600; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+.delta.good { color: var(--good); background: var(--good-soft); }
+.delta.bad { color: var(--bad); background: var(--bad-soft); }
+.delta.flat { color: var(--text-2); background: var(--surface-2); }
+.kpi svg.spark { width: 84px; height: 26px; flex: none; }
+@media (max-width: 600px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .kpi { padding: 12px; } .kpi .value { font-size: 22px; } .kpi .foot { flex-wrap: wrap; } .kpi svg.spark { width: 100%; } .kpi .label { flex-direction: column; gap: 0; } }
+.target { font-size: 11px; color: var(--text-3); }
+
+/* ============================================================ CHART GRID */
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--gap); margin-bottom: var(--gap); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); min-width: 0; grid-column: span 12; }
+.card header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.card header .hint { font-size: 12px; color: var(--text-3); }
+.chart-box { position: relative; height: 260px; }
+.chart-box.tall { height: 300px; }
+.empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
+.chart-box.is-empty .empty { display: flex; }
+.chart-box.is-empty canvas { visibility: hidden; }
+@media (min-width: 900px) { .span-8 { grid-column: span 8; } .span-6 { grid-column: span 6; } .span-4 { grid-column: span 4; } }
+
+/* ============================================================ TABLE */
+.table-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.table-tools input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); min-width: 220px; flex: 1 1 220px; max-width: 320px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 9px 12px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
+th { position: sticky; top: 0; background: var(--surface-2); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); font-weight: 600; }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+th[aria-sort="ascending"] button::after { content: "▲"; font-size: 9px; }
+th[aria-sort="descending"] button::after { content: "▼"; font-size: 9px; }
+td.r, th.r { text-align: right; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill.good { color: var(--good); background: var(--good-soft); }
+.pill.warn { color: var(--warn); background: var(--warn-soft); }
+.pill.bad { color: var(--bad); background: var(--bad-soft); }
+.pill.info { color: var(--info); background: var(--info-soft); }
+.pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.pager button:disabled { opacity: .4; cursor: default; }
+
+footer.note { font-size: 12px; color: var(--text-3); margin-top: 18px; }
+
+/* ============================================================ PRINT */
+@media print {
+  .filters, .actions, .table-tools, .pager { display: none !important; }
+  body { background: #fff; }
+  .card, .kpi { box-shadow: none; break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div>
+      <h1 id="dash-title">Shipment Performance</h1>
+      <div class="sub" id="dash-sub">Loading…</div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btn-export" type="button">Export CSV</button>
+      <button class="btn" id="btn-print" type="button">Print</button>
+      <button class="btn" id="btn-theme" type="button" aria-label="Toggle colour theme">Theme</button>
+    </div>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <label>Period
+      <select id="f-period">
+        <option value="30">Last 30 days</option>
+        <option value="90" selected>Last 90 days</option>
+        <option value="180">Last 180 days</option>
+        <option value="all">All data</option>
+      </select>
+    </label>
+    <label>Mode <select id="f-mode"></select></label>
+    <label>Carrier <select id="f-carrier"></select></label>
+    <label>Destination <select id="f-dest"></select></label>
+    <label>Status <select id="f-status"></select></label>
+    <span class="spacer"></span>
+    <span class="filter-count" id="filter-count"></span>
+    <button class="btn" id="btn-reset" type="button">Reset</button>
+  </section>
+
+  <section class="kpis" id="kpis" aria-label="Key metrics"></section>
+
+  <section class="grid">
+    <article class="card span-8">
+      <header><h2>Weekly shipments by mode</h2><span class="hint">by ship date</span></header>
+      <div class="chart-box tall"><canvas id="c-volume" role="img" aria-label="Stacked bar chart of weekly shipments by mode"></canvas><div class="empty">No shipments match these filters</div></div>
+    </article>
+    <article class="card span-4">
+      <header><h2>On-time delivery trend</h2><span class="hint" id="otd-hint"></span></header>
+      <div class="chart-box tall"><canvas id="c-otd" role="img" aria-label="Line chart of weekly on-time delivery percentage against target"></canvas><div class="empty">No delivered shipments</div></div>
+    </article>
+    <article class="card span-6">
+      <header><h2>On-time % by carrier</h2><span class="hint">delivered shipments, worst first</span></header>
+      <div class="chart-box"><canvas id="c-carrier" role="img" aria-label="Bar chart of on-time percentage by carrier"></canvas><div class="empty">No delivered shipments</div></div>
+    </article>
+    <article class="card span-6">
+      <header><h2>Freight spend by lane</h2><span class="hint">top 8</span></header>
+      <div class="chart-box"><canvas id="c-lanes" role="img" aria-label="Bar chart of freight spend by lane"></canvas><div class="empty">No shipments match these filters</div></div>
+    </article>
+  </section>
+
+  <section class="card" aria-label="Shipment detail">
+    <header><h2>Shipment detail</h2><span class="hint" id="table-count"></span></header>
+    <div class="table-tools">
+      <input id="t-search" type="search" placeholder="Search ID, carrier, lane…" aria-label="Search shipments">
+    </div>
+    <div class="table-scroll"><table id="t-main"><thead></thead><tbody></tbody></table></div>
+    <div class="pager"><button class="btn" id="p-prev" type="button">Prev</button><span id="p-info"></span><button class="btn" id="p-next" type="button">Next</button></div>
+  </section>
+
+  <footer class="note" id="dash-foot"></footer>
+</div>
+
+<script>
+/* ==================================================================
+   1. CONFIG — the knobs a new dashboard usually needs to change.
+   ================================================================== */
+const CONFIG = {
+  title: 'Shipment Performance',
+  source: 'Demo data — replace RAW_DATA with your export',
+  currency: 'USD',
+  locale: 'en-US',
+  onTimeTarget: 0.95,      // drawn as a target line + KPI target
+  pageSize: 25,
+  minWeeklySample: 5,      // weeks with fewer delivered shipments are left as gaps, not plotted as noise
+};
+
+/* ==================================================================
+   2. DATA — scripts/inject_data.py replaces everything between the
+   markers. Rows: { id, ship_date, eta, delivered_date|null, mode,
+   carrier, origin, destination, weight_kg, cost, status }
+   Leave as null to render seeded demo data.
+   ================================================================== */
+const RAW_DATA = /*DATA_START*/null/*DATA_END*/;
+
+/* ==================================================================
+   3. HELPERS — dates, formatting, theme
+   ================================================================== */
+const DAY = 864e5;
+const toDate = s => new Date(s + 'T00:00:00Z');
+const iso = d => d.toISOString().slice(0, 10);
+const addDays = (s, n) => iso(new Date(toDate(s).getTime() + n * DAY));
+const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / DAY);
+const weekStart = s => { const d = toDate(s); return iso(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY)); };
+
+const nf = new Intl.NumberFormat(CONFIG.locale);
+const nf1 = new Intl.NumberFormat(CONFIG.locale, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const fmt = {
+  int: v => v == null || !isFinite(v) ? '—' : nf.format(Math.round(v)),
+  dec: v => v == null || !isFinite(v) ? '—' : nf1.format(v),
+  pct: v => v == null || !isFinite(v) ? '—' : nf1.format(v * 100) + '%',
+  money: v => v == null || !isFinite(v) ? '—' : new Intl.NumberFormat(CONFIG.locale, { style: 'currency', currency: CONFIG.currency, notation: Math.abs(v) >= 1e5 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(v) >= 1e5 ? 1 : 0 }).format(v),
+  money2: v => v == null || !isFinite(v) ? '—' : new Intl.NumberFormat(CONFIG.locale, { style: 'currency', currency: CONFIG.currency, maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v),
+  date: s => s ? new Date(s + 'T00:00:00Z').toLocaleDateString(CONFIG.locale, { day: '2-digit', month: 'short', timeZone: 'UTC' }) : '—',
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const series = () => ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'].map(css);
+const sum = (arr, f) => arr.reduce((a, r) => a + (f(r) || 0), 0);
+const groupBy = (arr, f) => arr.reduce((m, r) => { const k = f(r); (m.get(k) || m.set(k, []).get(k)).push(r); return m; }, new Map());
+const uniq = (arr, f) => [...new Set(arr.map(f))].filter(v => v != null && v !== '').sort();
+
+/* ==================================================================
+   4. DEMO DATA — deterministic so screenshots are reproducible
+   ================================================================== */
+function demoData() {
+  let a = 20261015;
+  const rnd = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const MODES = {
+    Sea:  { carriers: { 'Maersk': .12, 'MSC': .22, 'CMA CGM': .16, 'Hapag-Lloyd': .09 }, transit: [18, 34], perKg: 0.32, kg: [2000, 18000],
+            lanes: [['Shanghai', 'Jebel Ali'], ['Ningbo', 'Jebel Ali'], ['Mumbai', 'Jebel Ali'], ['Rotterdam', 'Jebel Ali']] },
+    Air:  { carriers: { 'Emirates SkyCargo': .05, 'Qatar Airways Cargo': .08, 'DHL Aviation': .11 }, transit: [2, 5], perKg: 3.1, kg: [40, 1500],
+            lanes: [['Hong Kong', 'Dubai'], ['Frankfurt', 'Dubai'], ['Mumbai', 'Dubai']] },
+    Road: { carriers: { 'Aramex Freight': .10, 'Agility': .15, 'Al-Futtaim Logistics': .2 }, transit: [2, 8], perKg: 0.55, kg: [500, 12000],
+            lanes: [['Jebel Ali', 'Kuwait City'], ['Jebel Ali', 'Riyadh'], ['Jebel Ali', 'Manama'], ['Jebel Ali', 'Muscat']] },
+  };
+  const asOf = iso(new Date(Math.floor(Date.now() / DAY) * DAY));
+  const rows = [];
+  for (let i = 0; i < 900; i++) {
+    const r = rnd(), mode = r < .5 ? 'Sea' : r < .75 ? 'Air' : 'Road', m = MODES[mode];
+    const carrier = pick(Object.keys(m.carriers)), lane = pick(m.lanes);
+    const ship = addDays(asOf, -Math.floor(rnd() * 200));
+    const planned = Math.round(m.transit[0] + rnd() * (m.transit[1] - m.transit[0]));
+    const late = rnd() < m.carriers[carrier];
+    const actual = Math.max(1, planned + (late ? 1 + Math.ceil(rnd() * planned * .35) : -Math.floor(rnd() * 2)));
+    const eta = addDays(ship, planned), arrive = addDays(ship, actual);
+    const delivered = arrive <= asOf;
+    let status = 'Delivered';
+    if (!delivered) status = rnd() < .08 ? 'Customs hold' : asOf > eta ? 'Delayed' : 'In transit';
+    const weight = Math.round(m.kg[0] + rnd() * (m.kg[1] - m.kg[0]));
+    rows.push({
+      id: 'SHP-' + String(100000 + i * 7 + Math.floor(rnd() * 7)), ship_date: ship, eta, delivered_date: delivered ? arrive : null,
+      mode, carrier, origin: lane[0], destination: lane[1], weight_kg: weight,
+      cost: Math.round(weight * m.perKg * (.85 + rnd() * .4) + 150), status,
+    });
+  }
+  return rows;
+}
+
+/* ==================================================================
+   5. DERIVED FIELDS + STATE
+   ================================================================== */
+const ROWS = (RAW_DATA || demoData()).map(r => {
+  const delivered = !!r.delivered_date;
+  return {
+    ...r,
+    lane: `${r.origin} → ${r.destination}`,
+    delivered,
+    on_time: delivered ? r.delivered_date <= r.eta : null,
+    transit_days: delivered ? daysBetween(r.ship_date, r.delivered_date) : null,
+  };
+});
+// "As of" is the latest date in the data, not the viewer's clock — stale exports still render sensibly.
+const AS_OF = ROWS.reduce((m, r) => [r.ship_date, r.delivered_date].reduce((x, d) => d && d > x ? d : x, m), '0000-00-00');
+
+const STATUS_TONE = { 'Delivered': 'good', 'In transit': 'info', 'Delayed': 'bad', 'Customs hold': 'warn' };
+const FILTERS = [
+  { id: 'f-mode', key: 'mode', label: 'All modes' },
+  { id: 'f-carrier', key: 'carrier', label: 'All carriers' },
+  { id: 'f-dest', key: 'destination', label: 'All destinations' },
+  { id: 'f-status', key: 'status', label: 'All statuses' },
+];
+const state = { period: '90', mode: '', carrier: '', destination: '', status: '', search: '', sortKey: 'ship_date', sortDir: -1, page: 0 };
+
+function inPeriod(r, period, offset = 0) {
+  if (period === 'all') return offset === 0;
+  const n = +period, end = addDays(AS_OF, -n * offset), start = addDays(end, -n + 1);
+  return r.ship_date >= start && r.ship_date <= end;
+}
+function matchDims(r) { return FILTERS.every(f => !state[f.key] || r[f.key] === state[f.key]); }
+const current = () => ROWS.filter(r => inPeriod(r, state.period) && matchDims(r));
+const previous = () => ROWS.filter(r => inPeriod(r, state.period, 1) && matchDims(r));
+
+/* ==================================================================
+   6. KPI DEFINITIONS — value(rows); good: 'up' | 'down' decides delta colour
+   ================================================================== */
+const delivered = rows => rows.filter(r => r.delivered);
+const KPIS = [
+  { label: 'Shipments', good: 'up', value: rows => rows.length, fmt: fmt.int, spark: rows => rows.length },
+  { label: 'On-time delivery', good: 'up', value: rows => { const d = delivered(rows); return d.length ? d.filter(r => r.on_time).length / d.length : null; },
+    fmt: fmt.pct, deltaFmt: 'pp', target: CONFIG.onTimeTarget },
+  { label: 'Avg transit days', good: 'down', value: rows => { const d = delivered(rows); return d.length ? sum(d, r => r.transit_days) / d.length : null; }, fmt: fmt.dec },
+  { label: 'Freight spend', good: 'flat', value: rows => sum(rows, r => r.cost), fmt: fmt.money },
+  { label: 'Cost per kg', good: 'down', value: rows => { const w = sum(rows, r => r.weight_kg); return w ? sum(rows, r => r.cost) / w : null; }, fmt: fmt.money2 },
+  { label: 'Open exceptions', good: 'down', value: rows => rows.filter(r => r.status === 'Delayed' || r.status === 'Customs hold').length, fmt: fmt.int, noDelta: true, note: 'current snapshot' },
+];
+
+function sparkSvg(values) {
+  const v = values.filter(x => x != null);
+  if (v.length < 2) return '';
+  const min = Math.min(...v), max = Math.max(...v), w = 84, h = 26, p = 2;
+  const pts = values.map((x, i) => x == null ? null : [p + i * (w - 2 * p) / (values.length - 1), h - p - (max === min ? .5 : (x - min) / (max - min)) * (h - 2 * p)]).filter(Boolean);
+  const d = pts.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('');
+  const last = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.2" fill="var(--accent)"/></svg>`;
+}
+
+function renderKpis(cur, prev) {
+  const weeks = [...groupBy(cur, r => weekStart(r.ship_date)).entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
+  document.getElementById('kpis').innerHTML = KPIS.map(k => {
+    const v = k.value(cur);
+    let delta = '';
+    if (!k.noDelta && state.period !== 'all' && prev.length) {
+      const p = k.value(prev);
+      if (v != null && p != null && p !== 0) {
+        const diff = k.deltaFmt === 'pp' ? (v - p) * 100 : (v - p) / Math.abs(p) * 100;
+        const tone = Math.abs(diff) < 0.05 || k.good === 'flat' ? 'flat' : (diff > 0) === (k.good === 'up') ? 'good' : 'bad';
+        const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '';
+        delta = `<span class="delta ${tone}" title="vs previous ${state.period} days">${arrow} ${nf1.format(Math.abs(diff))}${k.deltaFmt === 'pp' ? ' pp' : '%'}</span>`;
+      }
+    }
+    const tgt = k.target != null ? `<span class="target">Target ${fmt.pct(k.target)}</span>` : '';
+    const spark = sparkSvg(weeks.map(([, rows]) => (k.spark || k.value)(rows)));
+    return `<div class="kpi"><div class="label"><span>${esc(k.label)}</span>${tgt}</div>
+      <div class="value">${k.fmt(v)}</div>
+      <div class="foot">${delta || '<span class="muted">' + (k.note || (state.period === 'all' ? 'all time' : 'no prior period')) + '</span>'}${spark}</div></div>`;
+  }).join('');
+}
+
+/* ==================================================================
+   7. CHARTS — rebuilt on every render so theme colours always apply
+   ================================================================== */
+const charts = {};
+function baseOptions(extra = {}) {
+  const text2 = css('--text-2'), grid = css('--grid');
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'bottom', labels: { color: text2, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rectRounded', padding: 14 } },
+      tooltip: { backgroundColor: css('--surface'), titleColor: css('--text'), bodyColor: text2, borderColor: css('--border'), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true },
+    },
+    scales: {
+      x: { grid: { display: false }, border: { color: grid }, ticks: { color: text2, maxRotation: 0, autoSkipPadding: 12 } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: text2, padding: 6 }, beginAtZero: true },
+    },
+  }, extra);
+}
+function mount(id, config, isEmpty) {
+  const canvas = document.getElementById(id);
+  canvas.parentElement.classList.toggle('is-empty', isEmpty);
+  if (charts[id]) charts[id].destroy();
+  if (typeof Chart === 'undefined') { canvas.parentElement.querySelector('.empty').textContent = 'Chart library failed to load'; canvas.parentElement.classList.add('is-empty'); return; }
+  charts[id] = new Chart(canvas, config);
+}
+
+function renderCharts(cur) {
+  const S = series();
+  // Weekly volume, stacked by mode
+  // Drop a leading partial week: a period that starts mid-week would otherwise show a fake dip.
+  const pStart = state.period === 'all' ? '' : addDays(AS_OF, -(+state.period) + 1);
+  const weeks = [...new Set(cur.map(r => weekStart(r.ship_date)))].sort().filter(w => !pStart || w >= pStart);
+  const modes = uniq(ROWS, r => r.mode);
+  mount('c-volume', {
+    type: 'bar',
+    data: { labels: weeks.map(fmt.date), datasets: modes.map((m, i) => ({
+      label: m, data: weeks.map(w => cur.filter(r => r.mode === m && weekStart(r.ship_date) === w).length),
+      backgroundColor: S[i % S.length], borderRadius: 3, maxBarThickness: 28 })) },
+    options: baseOptions({ scales: { ...baseOptions().scales, x: { ...baseOptions().scales.x, stacked: true }, y: { ...baseOptions().scales.y, stacked: true } } }),
+  }, !cur.length);
+
+  // On-time % trend with target line (by delivery week)
+  const del = delivered(cur);
+  const dWeeks = [...groupBy(del, r => weekStart(r.delivered_date)).entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
+  const otd = dWeeks.map(([, rows]) => rows.length >= CONFIG.minWeeklySample ? rows.filter(r => r.on_time).length / rows.length * 100 : null);
+  document.getElementById('otd-hint').textContent = `target ${fmt.pct(CONFIG.onTimeTarget)}`;
+  const o = baseOptions();
+  o.scales.y = { ...o.scales.y, beginAtZero: false, suggestedMin: 60, max: 100, ticks: { ...o.scales.y.ticks, callback: v => v + '%' } };
+  o.plugins.tooltip.callbacks = { label: c => ` ${c.dataset.label}: ${nf1.format(c.parsed.y)}%` };
+  mount('c-otd', {
+    type: 'line',
+    data: { labels: dWeeks.map(([w]) => fmt.date(w)), datasets: [
+      { label: 'On-time %', data: otd, spanGaps: false, borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, tension: .3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2 },
+      { label: 'Target', data: otd.map(() => CONFIG.onTimeTarget * 100), borderColor: css('--text-3'), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+    ] },
+    options: o,
+  }, !del.length);
+
+  // On-time % by carrier — horizontal, sorted worst first, coloured against target
+  const byCarrier = [...groupBy(del, r => r.carrier).entries()].map(([k, rows]) => [k, rows.filter(r => r.on_time).length / rows.length * 100, rows.length]).sort((a, b) => a[1] - b[1]);
+  const t = CONFIG.onTimeTarget * 100;
+  const hc = baseOptions({ indexAxis: 'y' });
+  hc.scales = { x: { ...hc.scales.y, beginAtZero: true, max: 100, ticks: { ...hc.scales.y.ticks, callback: v => v + '%' } }, y: { ...hc.scales.x, ticks: { ...hc.scales.x.ticks, autoSkip: false } } };
+  hc.plugins.legend = { display: false };
+  hc.plugins.tooltip.callbacks = { label: c => ` ${nf1.format(c.parsed.x)}% on time · ${byCarrier[c.dataIndex][2]} delivered` };
+  mount('c-carrier', {
+    type: 'bar',
+    data: { labels: byCarrier.map(c => c[0]), datasets: [{ data: byCarrier.map(c => c[1]),
+      backgroundColor: byCarrier.map(c => c[1] >= t ? css('--good') : c[1] >= t - 10 ? css('--warn') : css('--bad')), borderRadius: 3, maxBarThickness: 22 }] },
+    options: hc,
+  }, !byCarrier.length);
+
+  // Spend by lane — top 8
+  const lanes = [...groupBy(cur, r => r.lane).entries()].map(([k, rows]) => [k, sum(rows, r => r.cost)]).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const lc = baseOptions({ indexAxis: 'y' });
+  lc.scales = { x: { ...lc.scales.y, ticks: { ...lc.scales.y.ticks, callback: v => fmt.money(v) } }, y: { ...lc.scales.x, ticks: { ...lc.scales.x.ticks, autoSkip: false } } };
+  lc.plugins.legend = { display: false };
+  lc.plugins.tooltip.callbacks = { label: c => ' ' + fmt.money(c.parsed.x) };
+  mount('c-lanes', {
+    type: 'bar',
+    data: { labels: lanes.map(l => l[0]), datasets: [{ data: lanes.map(l => l[1]), backgroundColor: css('--s1'), borderRadius: 3, maxBarThickness: 22 }] },
+    options: lc,
+  }, !lanes.length);
+}
+
+/* ==================================================================
+   8. TABLE — sortable, searchable, paginated
+   ================================================================== */
+const COLUMNS = [
+  { key: 'id', label: 'Shipment', cell: r => `<span style="font-family:var(--mono)">${esc(r.id)}</span>` },
+  { key: 'ship_date', label: 'Shipped', cell: r => fmt.date(r.ship_date) },
+  { key: 'eta', label: 'ETA', cell: r => fmt.date(r.eta) },
+  { key: 'mode', label: 'Mode' },
+  { key: 'carrier', label: 'Carrier' },
+  { key: 'lane', label: 'Lane' },
+  { key: 'weight_kg', label: 'Weight (kg)', num: true, cell: r => fmt.int(r.weight_kg) },
+  { key: 'cost', label: 'Cost', num: true, cell: r => fmt.money2(r.cost) },
+  { key: 'transit_days', label: 'Transit d', num: true, cell: r => r.transit_days ?? '—' },
+  { key: 'status', label: 'Status', cell: r => `<span class="pill ${STATUS_TONE[r.status] || 'info'}">${esc(r.status)}</span>` },
+];
+let tableRows = [];
+function renderTable(cur) {
+  const q = state.search.trim().toLowerCase();
+  tableRows = q ? cur.filter(r => [r.id, r.carrier, r.lane, r.mode, r.status].join(' ').toLowerCase().includes(q)) : cur.slice();
+  const k = state.sortKey, dir = state.sortDir;
+  tableRows.sort((a, b) => { const x = a[k], y = b[k]; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+  const pages = Math.max(1, Math.ceil(tableRows.length / CONFIG.pageSize));
+  state.page = Math.min(state.page, pages - 1);
+  const slice = tableRows.slice(state.page * CONFIG.pageSize, (state.page + 1) * CONFIG.pageSize);
+  const t = document.getElementById('t-main');
+  t.tHead.innerHTML = '<tr>' + COLUMNS.map(c => `<th class="${c.num ? 'r' : ''}" aria-sort="${c.key === k ? (dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" data-k="${c.key}">${esc(c.label)}</button></th>`).join('') + '</tr>';
+  t.tBodies[0].innerHTML = slice.length
+    ? slice.map(r => '<tr>' + COLUMNS.map(c => `<td class="${c.num ? 'r num' : ''}">${c.cell ? c.cell(r) : esc(r[c.key])}</td>`).join('') + '</tr>').join('')
+    : `<tr><td colspan="${COLUMNS.length}" class="muted" style="text-align:center;padding:28px">No shipments match</td></tr>`;
+  document.getElementById('table-count').textContent = `${fmt.int(tableRows.length)} rows`;
+  document.getElementById('p-info').textContent = `Page ${state.page + 1} of ${pages}`;
+  document.getElementById('p-prev').disabled = state.page === 0;
+  document.getElementById('p-next').disabled = state.page >= pages - 1;
+}
+
+/* ==================================================================
+   9. WIRING
+   ================================================================== */
+function renderAll() {
+  const cur = current(), prev = previous();
+  const active = FILTERS.filter(f => state[f.key]).length;
+  document.getElementById('filter-count').textContent = `${fmt.int(cur.length)} of ${fmt.int(ROWS.length)} shipments${active ? ` · ${active} filter${active > 1 ? 's' : ''}` : ''}`;
+  renderKpis(cur, prev);
+  renderCharts(cur);
+  renderTable(cur);
+}
+
+function init() {
+  document.title = CONFIG.title;
+  document.getElementById('dash-title').textContent = CONFIG.title;
+  document.getElementById('dash-sub').textContent = `Data as of ${new Date(AS_OF + 'T00:00:00Z').toLocaleDateString(CONFIG.locale, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })} · ${fmt.int(ROWS.length)} shipments`;
+  document.getElementById('dash-foot').textContent = `Source: ${CONFIG.source}. On-time = delivered on or before ETA. Transit days = delivery date − ship date. Deltas compare with the previous period of equal length.`;
+
+  FILTERS.forEach(f => {
+    const el = document.getElementById(f.id);
+    el.innerHTML = `<option value="">${f.label}</option>` + uniq(ROWS, r => r[f.key]).map(v => `<option>${esc(v)}</option>`).join('');
+    el.addEventListener('change', () => { state[f.key] = el.value; state.page = 0; renderAll(); });
+  });
+  const period = document.getElementById('f-period');
+  period.value = state.period;
+  period.addEventListener('change', () => { state.period = period.value; state.page = 0; renderAll(); });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    FILTERS.forEach(f => { state[f.key] = ''; document.getElementById(f.id).value = ''; });
+    state.period = '90'; period.value = '90'; state.search = ''; document.getElementById('t-search').value = ''; state.page = 0; renderAll();
+  });
+  let timer;
+  document.getElementById('t-search').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => { state.search = e.target.value; state.page = 0; renderTable(current()); }, 150); });
+  document.getElementById('t-main').tHead.addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]'); if (!b) return;
+    if (state.sortKey === b.dataset.k) state.sortDir *= -1; else { state.sortKey = b.dataset.k; state.sortDir = 1; }
+    renderTable(current());
+  });
+  document.getElementById('p-prev').addEventListener('click', () => { state.page--; renderTable(current()); });
+  document.getElementById('p-next').addEventListener('click', () => { state.page++; renderTable(current()); });
+  document.getElementById('btn-print').addEventListener('click', () => window.print());
+  document.getElementById('btn-export').addEventListener('click', exportCsv);
+
+  // Theme: explicit choice wins; otherwise follow the OS. Storage may be unavailable — never depend on it.
+  const root = document.documentElement;
+  try { const saved = localStorage.getItem('dash-theme'); if (saved) root.dataset.theme = saved; } catch (e) {}
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('dash-theme', root.dataset.theme); } catch (e) {}
+    renderCharts(current());
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderCharts(current()));
+
+  renderAll();
+}
+
+function exportCsv() {
+  const cols = ['id', 'ship_date', 'eta', 'delivered_date', 'mode', 'carrier', 'origin', 'destination', 'weight_kg', 'cost', 'transit_days', 'on_time', 'status'];
+  const q = v => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  const csv = [cols.join(','), ...tableRows.map(r => cols.map(c => q(r[c])).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `shipments_${AS_OF}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "skill_name": "html-dashboard-designer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've got our shipment tracker export (shipments.xlsx — columns: BL No, Ship Date, ETA, ATA, Mode, Forwarder, POL, POD, Weight KG, Freight USD, Status). Build me a dashboard my manager can open to see on-time %, transit times and which forwarder is the worst this quarter.",
+      "expected_output": "Single HTML file adapted from the template: data embedded with columns renamed, KPIs with deltas, forwarder ranking sorted worst-first against target, passes check_dashboard.py and render_check.mjs.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "make an inventory health dashboard for 40 stores: SOH, days of cover, in-stock %, sell-through, aged stock. no data yet, just mock it up so I can show the idea tomorrow",
+      "expected_output": "Template shell re-themed for inventory KPIs with seeded, clearly labelled demo data; correct KPI formulas from kpi-library (DOH, sell-through); store/category filters; works on mobile and dark mode.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Here's my current dashboard.html, it looks amateur — pie charts everywhere, rainbow colours, numbers like 0.8934. Can you redesign it properly?",
+      "expected_output": "Review grouped as wrong / misleading / hard to read / polish, then a rebuilt page on the token system: pies replaced by sorted bars, formatted numbers, status-only colour, dark mode, checks pass.",
+      "files": []
+    }
+  ]
+}
